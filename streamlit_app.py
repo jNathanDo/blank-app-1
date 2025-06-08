@@ -5,41 +5,31 @@ from PIL import Image, ImageDraw
 import io
 import zipfile
 import tempfile
-import numpy as np
 
-# For advanced drag/resize support:
-from streamlit_drawable_canvas import st_canvas
-
-# Constants
+# --- Constants ---
 CARD_SIZE = 500
+SYMBOL_SIZE = 80
 MARGIN = 20
-SYMBOL_SIZE_DEFAULT = 80
 
-st.set_page_config(page_title="Spot It! Card Generator", layout="wide")
-st.title("🎴 Spot It! Card Generator with Easy/Advanced Mode")
+st.set_page_config(page_title="Spot It! Card Generator")
+st.title("Spot It! Card Generator")
 
-# Mode selection
-mode = st.radio("Choose mode:", ["Easy (Auto placement)", "Advanced (Drag & Resize)"])
+# --- User inputs ---
+n = st.slider("Symbols per card (n):", min_value=3, max_value=8, value=4)
+mode = st.radio("Mode:", ["Easy (Auto placement)", "Advanced (Interactive drag & resize)"])
+image_files = st.file_uploader("Upload at least {} images".format(n**2 - n + 1), type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
+border_thickness = st.slider("Border thickness (px)", min_value=0, max_value=20, value=3)
+card_size = st.slider("Card size (px)", min_value=300, max_value=1000, value=CARD_SIZE, step=50)
 
-# Symbols per card
-n = st.slider("Symbols per card (n):", 3, 6, 4)
-total_symbols = n**2 - n + 1
-
-# Upload images
-uploaded_files = st.file_uploader(
-    f"Upload at least {total_symbols} images (PNG/JPG). These will be used as symbols.",
-    type=["png", "jpg", "jpeg"],
-    accept_multiple_files=True,
-)
-
-if uploaded_files and len(uploaded_files) < total_symbols:
-    st.warning(f"Please upload at least {total_symbols} images for n={n}. You uploaded {len(uploaded_files)}.")
-
+# --- Math logic ---
 def generate_spot_it_deck(n):
+    total_symbols = n**2 - n + 1
     cards = []
+
     for i in range(n):
         card = [0] + [i * (n - 1) + j + 1 for j in range(n - 1)]
         cards.append(card)
+
     for i in range(n - 1):
         for j in range(n - 1):
             card = [i + 1]
@@ -47,189 +37,116 @@ def generate_spot_it_deck(n):
                 val = n + (n - 1) * k + ((i * k + j) % (n - 1))
                 card.append(val)
             cards.append(card)
+
     return cards
 
-def draw_card_with_images(card_symbols, images, positions=None, sizes=None):
-    img = Image.new("RGBA", (CARD_SIZE, CARD_SIZE), (255, 255, 255, 255))
-    draw = ImageDraw.Draw(img)
-    # Draw circle border
-    draw.ellipse(
-        [MARGIN, MARGIN, CARD_SIZE - MARGIN, CARD_SIZE - MARGIN],
-        outline="black",
-        width=3,
-    )
-    center = CARD_SIZE // 2
-    radius = (CARD_SIZE - 2 * MARGIN) // 2
+# --- Collision detection ---
+def is_overlapping(new_box, placed_boxes):
+    for box in placed_boxes:
+        if not (new_box[2] <= box[0] or new_box[0] >= box[2] or
+                new_box[3] <= box[1] or new_box[1] >= box[3]):
+            return True
+    return False
 
-    # Default positions and sizes if None:
-    if positions is None or sizes is None:
-        positions = []
-        sizes = []
-        count = len(card_symbols)
-        angle_step = 2 * math.pi / count
-        for i in range(count):
-            angle = i * angle_step
-            x = center + int((radius - SYMBOL_SIZE_DEFAULT//2) * math.cos(angle))
-            y = center + int((radius - SYMBOL_SIZE_DEFAULT//2) * math.sin(angle))
-            positions.append([x, y])
-            sizes.append(SYMBOL_SIZE_DEFAULT)
+# --- Drawing logic ---
+def draw_card(symbols, images, size=CARD_SIZE, border=3):
+    card = Image.new("RGBA", (size, size), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(card)
+    center = (size // 2, size // 2)
+    radius = (size - SYMBOL_SIZE) // 2
 
-    # Draw all symbols with given positions and sizes
-    for idx, sym_id in enumerate(card_symbols):
-        im = images[sym_id].convert("RGBA")
-        size_px = sizes[idx]
-        im = im.resize((size_px, size_px))
-        x, y = positions[idx]
+    placed_boxes = []
+    max_attempts = 100
 
-        # Clamp images inside circle border
-        left_bound = center - radius + size_px // 2
-        right_bound = center + radius - size_px // 2
-        top_bound = center - radius + size_px // 2
-        bottom_bound = center + radius - size_px // 2
-        x = max(left_bound, min(right_bound, x))
-        y = max(top_bound, min(bottom_bound, y))
+    for sym_id in symbols:
+        placed = False
+        symbol_size = SYMBOL_SIZE
 
-        img.paste(im, (int(x - size_px / 2), int(y - size_px / 2)), im)
+        for attempt in range(max_attempts):
+            angle = random.uniform(0, 2 * math.pi)
+            r = random.uniform(0, radius)
+            cx = center[0] + r * math.cos(angle)
+            cy = center[1] + r * math.sin(angle)
 
-    return img
+            x1 = cx - symbol_size / 2
+            y1 = cy - symbol_size / 2
+            x2 = cx + symbol_size / 2
+            y2 = cy + symbol_size / 2
 
-if uploaded_files and len(uploaded_files) >= total_symbols:
-    deck = generate_spot_it_deck(n)
+            # Check within circle bounds
+            corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
+            if any(math.hypot(c[0]-center[0], c[1]-center[1]) > radius for c in corners):
+                continue
 
-    # Load images into memory
-    images = []
-    for file in uploaded_files[:total_symbols]:
-        im = Image.open(file)
-        images.append(im)
+            # Check overlap
+            if is_overlapping((x1, y1, x2, y2), placed_boxes):
+                continue
 
-    if mode == "Easy (Auto placement)":
-        st.success(f"Generated {len(deck)} cards with automatic layout.")
-        cards = []
-        for idx, card_symbols in enumerate(deck):
-            st.markdown(f"### Card {idx+1}")
-            card_img = draw_card_with_images(card_symbols, images)
-            st.image(card_img, use_column_width=True)
-            cards.append(card_img)
+            placed_boxes.append((x1, y1, x2, y2))
+            img = images[sym_id].resize((symbol_size, symbol_size))
+            card.paste(img, (int(x1), int(y1)), img.convert('RGBA'))
+            placed = True
+            break
 
-        if st.button("Export all cards as ZIP"):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                zip_path = f"{tmpdir}/spot_it_cards.zip"
-                with zipfile.ZipFile(zip_path, "w") as zipf:
-                    for i, card_img in enumerate(cards):
-                        buf = io.BytesIO()
-                        card_img.save(buf, format="PNG")
-                        zipf.writestr(f"card_{i+1}.png", buf.getvalue())
-                with open(zip_path, "rb") as f:
-                    st.download_button("Download ZIP", f, file_name="spot_it_cards.zip")
+        # If can't place without overlap, try reducing size and retry
+        if not placed:
+            for smaller_size in range(SYMBOL_SIZE - 10, 20, -10):
+                symbol_size = smaller_size
+                for attempt in range(max_attempts):
+                    angle = random.uniform(0, 2 * math.pi)
+                    r = random.uniform(0, radius)
+                    cx = center[0] + r * math.cos(angle)
+                    cy = center[1] + r * math.sin(angle)
 
+                    x1 = cx - symbol_size / 2
+                    y1 = cy - symbol_size / 2
+                    x2 = cx + symbol_size / 2
+                    y2 = cy + symbol_size / 2
+
+                    corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
+                    if any(math.hypot(c[0]-center[0], c[1]-center[1]) > radius for c in corners):
+                        continue
+
+                    if is_overlapping((x1, y1, x2, y2), placed_boxes):
+                        continue
+
+                    placed_boxes.append((x1, y1, x2, y2))
+                    img = images[sym_id].resize((symbol_size, symbol_size))
+                    card.paste(img, (int(x1), int(y1)), img.convert('RGBA'))
+                    placed = True
+                    break
+                if placed:
+                    break
+
+    if border > 0:
+        draw.ellipse([MARGIN, MARGIN, size - MARGIN, size - MARGIN], outline="black", width=border)
+    return card
+
+# --- Main app logic ---
+if st.button("Generate Cards"):
+    total_needed = n**2 - n + 1
+    if len(image_files) < total_needed:
+        st.error(f"You need to upload at least {total_needed} images.")
     else:
-        # Advanced mode with interactive drag & resize per card
-        st.info("Drag and resize symbols on each card. Positions and sizes are saved per session.")
+        deck = generate_spot_it_deck(n)
+        st.success(f"Generated {len(deck)} cards.")
 
-        cards = []
-        # Save positions and sizes in session state to persist between reruns
-        if "positions" not in st.session_state:
-            st.session_state.positions = {}
-        if "sizes" not in st.session_state:
-            st.session_state.sizes = {}
+        # Load images and assign to symbol IDs
+        images = []
+        for f in image_files[:total_needed]:
+            img = Image.open(f).convert("RGBA")
+            images.append(img)
 
-        for card_idx, card_symbols in enumerate(deck):
-            st.markdown(f"### Card {card_idx + 1}")
+        # Create temp ZIP
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            zip_path = f"{tmpdirname}/spot_it_cards.zip"
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                for i, card_symbols in enumerate(deck):
+                    card_img = draw_card(card_symbols, images, size=card_size, border=border_thickness)
+                    buf = io.BytesIO()
+                    card_img.save(buf, format="PNG")
+                    zipf.writestr(f"card_{i + 1}.png", buf.getvalue())
 
-            key_pos = f"positions_{card_idx}"
-            key_size = f"sizes_{card_idx}"
-
-            if key_pos not in st.session_state.positions:
-                # Initialize positions on circle border
-                center = CARD_SIZE // 2
-                radius = (CARD_SIZE - 2 * MARGIN) // 2
-                pos_init = []
-                size_init = []
-                count = len(card_symbols)
-                angle_step = 2 * math.pi / count
-                for i in range(count):
-                    angle = i * angle_step
-                    x = center + int((radius - SYMBOL_SIZE_DEFAULT//2) * math.cos(angle))
-                    y = center + int((radius - SYMBOL_SIZE_DEFAULT//2) * math.sin(angle))
-                    pos_init.append([x, y])
-                    size_init.append(SYMBOL_SIZE_DEFAULT)
-                st.session_state.positions[key_pos] = pos_init
-                st.session_state.sizes[key_size] = size_init
-
-            # Canvas setup
-            canvas_result = st_canvas(
-                fill_color="rgba(0, 0, 0, 0)",
-                stroke_width=0,
-                stroke_color="#000000",
-                background_color="#ffffff",
-                height=CARD_SIZE,
-                width=CARD_SIZE,
-                drawing_mode="transform",
-                key=f"canvas_{card_idx}",
-                initial_drawing=None,
-                point_display_radius=0,
-                # Only allow transform (move/resize) on these objects
-                objects=[
-                    {
-                        "type": "image",
-                        "left": st.session_state.positions[key_pos][i][0] - st.session_state.sizes[key_size][i] // 2,
-                        "top": st.session_state.positions[key_pos][i][1] - st.session_state.sizes[key_size][i] // 2,
-                        "width": st.session_state.sizes[key_size][i],
-                        "height": st.session_state.sizes[key_size][i],
-                        "src": images[card_symbols[i]]._repr_png_(),
-                        "lockScalingFlip": True,
-                    }
-                    for i in range(len(card_symbols))
-                ],
-                display_toolbar=True,
-                key_events={"transform": True}
-            )
-
-            # On change, update positions and sizes
-            if canvas_result.json_data:
-                objects = canvas_result.json_data.get("objects", [])
-                new_positions = []
-                new_sizes = []
-                center = CARD_SIZE // 2
-                radius = (CARD_SIZE - 2 * MARGIN) // 2
-                for obj in objects:
-                    # Clamp inside circle border
-                    x_center = obj["left"] + obj["width"] / 2
-                    y_center = obj["top"] + obj["height"] / 2
-                    w = obj["width"]
-                    h = obj["height"]
-                    # Clamp x_center/y_center to stay fully inside circle border
-                    left_bound = center - radius + w / 2
-                    right_bound = center + radius - w / 2
-                    top_bound = center - radius + h / 2
-                    bottom_bound = center + radius - h / 2
-
-                    x_clamped = max(left_bound, min(right_bound, x_center))
-                    y_clamped = max(top_bound, min(bottom_bound, y_center))
-
-                    new_positions.append([x_clamped, y_clamped])
-                    new_sizes.append(int(max(w, h)))
-
-                st.session_state.positions[key_pos] = new_positions
-                st.session_state.sizes[key_size] = new_sizes
-
-                # Draw the updated card image below canvas preview
-                card_img = draw_card_with_images(card_symbols, images, new_positions, new_sizes)
-                st.image(card_img, caption="Rendered Card", use_column_width=False, width=CARD_SIZE)
-                cards.append(card_img)
-
-        if cards and st.button("Export all edited cards as ZIP"):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                zip_path = f"{tmpdir}/spot_it_cards.zip"
-                with zipfile.ZipFile(zip_path, "w") as zipf:
-                    for i, card_img in enumerate(cards):
-                        buf = io.BytesIO()
-                        card_img.save(buf, format="PNG")
-                        zipf.writestr(f"card_{i+1}.png", buf.getvalue())
-                with open(zip_path, "rb") as f:
-                    st.download_button("Download ZIP", f, file_name="spot_it_cards.zip")
-
-else:
-    st.info(f"Upload at least {total_symbols} images to generate cards.")
-
+            with open(zip_path, "rb") as f:
+                st.download_button("Download ZIP of Cards", f, file_name="spot_it_cards.zip")
 
