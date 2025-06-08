@@ -12,9 +12,11 @@ SYMBOL_SIZE_DEFAULT = 80
 MARGIN = 20
 
 st.set_page_config(page_title="Spot It! Card Generator")
-st.title("🔄 Spot It! Card Generator with Manual Position & Resize")
+st.title("🔄 Spot It! Card Generator")
 
 # --- User inputs ---
+mode = st.selectbox("Select setup mode:", ["Easy Setup (Auto placement)", "Advanced Setup (Manual position & resize)"])
+
 n = st.slider("Symbols per card (n):", min_value=3, max_value=6, value=4)
 total_symbols = n**2 - n + 1
 image_files = st.file_uploader(f"Upload at least {total_symbols} images", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
@@ -66,53 +68,78 @@ def draw_card_with_positions(symbols, images, positions, sizes, size=CARD_SIZE, 
 
     return card
 
+# --- Draw card auto placement ---
+def draw_card_auto(symbols, images, size=CARD_SIZE, border=3):
+    card = Image.new("RGBA", (size, size), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(card)
+    center = (size // 2, size // 2)
+    radius = (size - MARGIN*2) // 2
+    draw.ellipse([MARGIN, MARGIN, size - MARGIN, size - MARGIN], outline="black", width=border)
+
+    n_symbols = len(symbols)
+    angle_step = 2 * math.pi / n_symbols
+    img_size = SYMBOL_SIZE_DEFAULT
+
+    for i, sym_id in enumerate(symbols):
+        angle = i * angle_step
+        x = center[0] + (radius - img_size//2) * math.cos(angle)
+        y = center[1] + (radius - img_size//2) * math.sin(angle)
+
+        img = images[sym_id].resize((img_size, img_size))
+        card.paste(img, (int(x - img_size//2), int(y - img_size//2)), img.convert("RGBA"))
+
+    return card
+
 if image_files and len(image_files) >= total_symbols:
     deck = generate_spot_it_deck(n)
     st.success(f"Generated {len(deck)} cards.")
 
-    # Load images and assign to symbol IDs
     images = []
     for f in image_files[:total_symbols]:
         img = Image.open(f).convert("RGBA")
         images.append(img)
 
-    # Container for all cards
     final_cards = []
 
-    for card_idx, card_symbols in enumerate(deck):
-        st.markdown(f"### Card {card_idx + 1}")
+    if mode == "Easy Setup (Auto placement)":
+        for card_idx, card_symbols in enumerate(deck):
+            st.markdown(f"### Card {card_idx + 1}")
+            card_img = draw_card_auto(card_symbols, images)
+            st.image(card_img, use_container_width=True)
+            final_cards.append(card_img)
 
-        center = CARD_SIZE // 2
-        radius = (CARD_SIZE - MARGIN*2) // 2
+    else:  # Advanced mode with sliders
+        for card_idx, card_symbols in enumerate(deck):
+            st.markdown(f"### Card {card_idx + 1}")
 
-        # Default positions: random on circle perimeter
-        default_positions = []
-        for i in range(len(card_symbols)):
-            angle = 2 * math.pi * i / len(card_symbols)
-            x = center + radius * math.cos(angle)
-            y = center + radius * math.sin(angle)
-            default_positions.append([x, y])
+            center = CARD_SIZE // 2
+            radius = (CARD_SIZE - MARGIN*2) // 2
 
-        # Sliders for positions and sizes per symbol
-        positions = []
-        sizes = []
+            default_positions = []
+            for i in range(len(card_symbols)):
+                angle = 2 * math.pi * i / len(card_symbols)
+                x = center + radius * math.cos(angle)
+                y = center + radius * math.sin(angle)
+                default_positions.append([x, y])
 
-        for i, sym_id in enumerate(card_symbols):
-            st.write(f"Symbol {sym_id + 1}")
-            pos_x = st.slider(f"X position (symbol {sym_id + 1}, card {card_idx + 1})", 
-                              MARGIN, CARD_SIZE - MARGIN, int(default_positions[i][0]), key=f"x_{card_idx}_{i}")
-            pos_y = st.slider(f"Y position (symbol {sym_id + 1}, card {card_idx + 1})", 
-                              MARGIN, CARD_SIZE - MARGIN, int(default_positions[i][1]), key=f"y_{card_idx}_{i}")
-            size_slider = st.slider(f"Size (symbol {sym_id + 1}, card {card_idx + 1})", 
-                                    20, 120, SYMBOL_SIZE_DEFAULT, key=f"s_{card_idx}_{i}")
-            positions.append([pos_x, pos_y])
-            sizes.append(size_slider)
+            positions = []
+            sizes = []
 
-        card_img = draw_card_with_positions(card_symbols, images, positions, sizes)
-        st.image(card_img, use_container_width=True)
-        final_cards.append(card_img)
+            for i, sym_id in enumerate(card_symbols):
+                st.write(f"Symbol {sym_id + 1}")
+                pos_x = st.slider(f"X position (symbol {sym_id + 1}, card {card_idx + 1})",
+                                  MARGIN, CARD_SIZE - MARGIN, int(default_positions[i][0]), key=f"x_{card_idx}_{i}")
+                pos_y = st.slider(f"Y position (symbol {sym_id + 1}, card {card_idx + 1})",
+                                  MARGIN, CARD_SIZE - MARGIN, int(default_positions[i][1]), key=f"y_{card_idx}_{i}")
+                size_slider = st.slider(f"Size (symbol {sym_id + 1}, card {card_idx + 1})",
+                                        20, 120, SYMBOL_SIZE_DEFAULT, key=f"s_{card_idx}_{i}")
+                positions.append([pos_x, pos_y])
+                sizes.append(size_slider)
 
-    # Export all cards as ZIP
+            card_img = draw_card_with_positions(card_symbols, images, positions, sizes)
+            st.image(card_img, use_container_width=True)
+            final_cards.append(card_img)
+
     if st.button("Export All Cards as ZIP"):
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = f"{tmpdir}/spot_it_cards.zip"
@@ -123,6 +150,5 @@ if image_files and len(image_files) >= total_symbols:
                     zipf.writestr(f"card_{i+1}.png", buf.getvalue())
             with open(zip_path, "rb") as f:
                 st.download_button("Download ZIP", f, file_name="spot_it_cards.zip")
-
 else:
     st.info(f"Upload at least {total_symbols} images to generate the cards.")
