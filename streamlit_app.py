@@ -42,12 +42,12 @@ def draw_card(symbols, images, size=CARD_SIZE, border=3):
     card = Image.new("RGBA", (size, size), (255, 255, 255, 255))
     draw = ImageDraw.Draw(card)
     center = (size // 2, size // 2)
-    radius = (size - SYMBOL_SIZE) // 2
+    radius = (size - SYMBOL_SIZE) // 2  # place image center on border
 
     symbol_positions = []
     adjusted_symbol_size = SYMBOL_SIZE
 
-    # Try to avoid overlap by dynamically adjusting radius if needed
+    # Try to avoid overlap by dynamically adjusting size
     max_attempts = 5
     for attempt in range(max_attempts):
         symbol_positions.clear()
@@ -55,13 +55,15 @@ def draw_card(symbols, images, size=CARD_SIZE, border=3):
 
         for i, sym_id in enumerate(symbols):
             angle = 2 * math.pi * i / len(symbols)
-            x = center[0] + radius * math.cos(angle) - adjusted_symbol_size // 2
-            y = center[1] + radius * math.sin(angle) - adjusted_symbol_size // 2
-            bbox = (x, y, x + adjusted_symbol_size, y + adjusted_symbol_size)
+            cx = center[0] + radius * math.cos(angle)
+            cy = center[1] + radius * math.sin(angle)
+            bbox = (cx - adjusted_symbol_size / 2, cy - adjusted_symbol_size / 2,
+                    cx + adjusted_symbol_size / 2, cy + adjusted_symbol_size / 2)
 
             # Check for collisions
             for other_bbox in symbol_positions:
-                if not (bbox[2] <= other_bbox[0] or bbox[0] >= other_bbox[2] or bbox[3] <= other_bbox[1] or bbox[1] >= other_bbox[3]):
+                if not (bbox[2] <= other_bbox[0] or bbox[0] >= other_bbox[2] or
+                        bbox[3] <= other_bbox[1] or bbox[1] >= other_bbox[3]):
                     collision = True
                     break
 
@@ -71,15 +73,16 @@ def draw_card(symbols, images, size=CARD_SIZE, border=3):
                 symbol_positions.append(bbox)
 
         if collision:
-            adjusted_symbol_size -= 10  # Reduce size to try again
-            radius = (size - adjusted_symbol_size) // 2
+            adjusted_symbol_size -= 10  # shrink and retry
         else:
             break
 
     for i, sym_id in enumerate(symbols):
         angle = 2 * math.pi * i / len(symbols)
-        x = center[0] + radius * math.cos(angle) - adjusted_symbol_size // 2
-        y = center[1] + radius * math.sin(angle) - adjusted_symbol_size // 2
+        cx = center[0] + radius * math.cos(angle)
+        cy = center[1] + radius * math.sin(angle)
+        x = cx - adjusted_symbol_size / 2
+        y = cy - adjusted_symbol_size / 2
         img = images[sym_id].resize((adjusted_symbol_size, adjusted_symbol_size))
         card.paste(img, (int(x), int(y)), img.convert('RGBA'))
 
