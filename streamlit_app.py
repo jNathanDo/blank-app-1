@@ -12,7 +12,7 @@ SYMBOL_SIZE = 80
 MARGIN = 20
 
 st.set_page_config(page_title="Spot It! Card Generator")
-st.title("🔄 Spot It! Card Generator")
+st.title("Spot It! Card Generator")
 
 # --- User inputs ---
 n = st.slider("Symbols per card (n):", min_value=3, max_value=8, value=4)
