@@ -135,63 +135,73 @@ def draw_card_with_positions(symbols, images, positions, sizes, size):
     return card
 
 # --- Main logic ---
+total_needed = n**2 - n + 1
+
+# Handle image loading
+if image_files:
+    images = [Image.open(f).convert("RGBA") for f in image_files[:total_needed]]
+    st.session_state["images"] = images
+
 if st.button("Generate Cards"):
-    total_needed = n**2 - n + 1
     if len(image_files) < total_needed:
         st.error(f"You need to upload at least {total_needed} images.")
     else:
         deck = generate_spot_it_deck(n)
         st.success(f"Generated {len(deck)} cards.")
 
-        images = [Image.open(f).convert("RGBA") for f in image_files[:total_needed]]
-        final_cards = []
+        st.session_state["deck"] = deck
+        st.session_state["generated"] = True  # flag to show UI below
+        st.session_state["card_size"] = card_size
+        st.session_state["border_thickness"] = border_thickness
 
-        for card_idx, card_symbols in enumerate(deck):
-            if mode == "Easy":
-                card_img = draw_card(card_symbols, images, card_size, border_thickness)
-                st.image(card_img, caption=f"Card {card_idx + 1}", use_container_width=True)
-                final_cards.append(card_img)
-            else:
-                st.subheader(f"Card {card_idx + 1} (Advanced)")
-                default_positions = [(card_size//2, card_size//2) for _ in card_symbols]
-                # --- Advanced Mode ---
-if mode == "Advanced":
+# --- Render Cards ---
+if st.session_state.get("generated", False) and "deck" in st.session_state and "images" in st.session_state:
+    deck = st.session_state["deck"]
+    images = st.session_state["images"]
+    card_size = st.session_state["card_size"]
+    border_thickness = st.session_state["border_thickness"]
+
     final_cards = []
+
     for card_idx, card_symbols in enumerate(deck):
-        st.subheader(f"Advanced Card {card_idx + 1}")
-        default_positions = [[card_size // 2, card_size // 2] for _ in range(len(card_symbols))]
+        if mode == "Easy":
+            card_img = draw_card(card_symbols, images, card_size, border_thickness)
+            st.image(card_img, caption=f"Card {card_idx + 1}", use_container_width=True)
+            final_cards.append(card_img)
+        else:
+            st.subheader(f"Advanced Card {card_idx + 1}")
+            default_positions = [[card_size // 2, card_size // 2] for _ in range(len(card_symbols))]
 
-        # Setup session state keys
-        for i, sym_id in enumerate(card_symbols):
-            key_prefix = f"card{card_idx}_sym{i}"
-            if f"{key_prefix}_x" not in st.session_state:
-                st.session_state[f"{key_prefix}_x"] = default_positions[i][0]
-            if f"{key_prefix}_y" not in st.session_state:
-                st.session_state[f"{key_prefix}_y"] = default_positions[i][1]
-            if f"{key_prefix}_s" not in st.session_state:
-                st.session_state[f"{key_prefix}_s"] = SYMBOL_SIZE_DEFAULT
+            # Setup session state keys
+            for i, sym_id in enumerate(card_symbols):
+                key_prefix = f"card{card_idx}_sym{i}"
+                if f"{key_prefix}_x" not in st.session_state:
+                    st.session_state[f"{key_prefix}_x"] = default_positions[i][0]
+                if f"{key_prefix}_y" not in st.session_state:
+                    st.session_state[f"{key_prefix}_y"] = default_positions[i][1]
+                if f"{key_prefix}_s" not in st.session_state:
+                    st.session_state[f"{key_prefix}_s"] = SYMBOL_SIZE_DEFAULT
 
-        # Sliders
-        positions = []
-        sizes = []
-        for i, sym_id in enumerate(card_symbols):
-            key_prefix = f"card{card_idx}_sym{i}"
-            st.write(f"Symbol {sym_id + 1}")
-            pos_x = st.slider(f"X position (symbol {sym_id + 1})", 
-                              0, card_size, st.session_state[f"{key_prefix}_x"], key=f"{key_prefix}_x")
-            pos_y = st.slider(f"Y position (symbol {sym_id + 1})", 
-                              0, card_size, st.session_state[f"{key_prefix}_y"], key=f"{key_prefix}_y")
-            size_slider = st.slider(f"Size (symbol {sym_id + 1})", 
-                                    20, 150, st.session_state[f"{key_prefix}_s"], key=f"{key_prefix}_s")
-            positions.append([pos_x, pos_y])
-            sizes.append(size_slider)
+            # Sliders
+            positions = []
+            sizes = []
+            for i, sym_id in enumerate(card_symbols):
+                key_prefix = f"card{card_idx}_sym{i}"
+                st.write(f"Symbol {sym_id + 1}")
+                pos_x = st.slider(f"X position (symbol {sym_id + 1})",
+                                  0, card_size, st.session_state[f"{key_prefix}_x"], key=f"{key_prefix}_x")
+                pos_y = st.slider(f"Y position (symbol {sym_id + 1})",
+                                  0, card_size, st.session_state[f"{key_prefix}_y"], key=f"{key_prefix}_y")
+                size_slider = st.slider(f"Size (symbol {sym_id + 1})",
+                                        20, 150, st.session_state[f"{key_prefix}_s"], key=f"{key_prefix}_s")
+                positions.append([pos_x, pos_y])
+                sizes.append(size_slider)
 
-        # Draw and show the card
-        card_img = draw_card_with_positions(card_symbols, images, positions, sizes, card_size, border_thickness)
-        st.image(card_img, use_container_width=True)
-        final_cards.append(card_img)
+            card_img = draw_card_with_positions(card_symbols, images, positions, sizes, card_size, border_thickness)
+            st.image(card_img, use_container_width=True)
+            final_cards.append(card_img)
 
-    # ZIP download
+    # ZIP Export
     if st.button("Export All Cards as ZIP"):
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = f"{tmpdir}/spot_it_cards.zip"
@@ -202,3 +212,4 @@ if mode == "Advanced":
                     zipf.writestr(f"card_{i+1}.png", buf.getvalue())
             with open(zip_path, "rb") as f:
                 st.download_button("Download ZIP", f, file_name="spot_it_cards.zip")
+
