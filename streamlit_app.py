@@ -1,5 +1,6 @@
 import streamlit as st
 import math
+import random
 from PIL import Image, ImageDraw
 import io
 import zipfile
@@ -37,54 +38,83 @@ def generate_spot_it_deck(n):
 
     return cards
 
+# --- Collision detection ---
+def is_overlapping(new_box, placed_boxes):
+    for box in placed_boxes:
+        if not (new_box[2] <= box[0] or new_box[0] >= box[2] or
+                new_box[3] <= box[1] or new_box[1] >= box[3]):
+            return True
+    return False
+
 # --- Drawing logic ---
 def draw_card(symbols, images, size=CARD_SIZE, border=3):
     card = Image.new("RGBA", (size, size), (255, 255, 255, 255))
     draw = ImageDraw.Draw(card)
     center = (size // 2, size // 2)
-    radius = (size - SYMBOL_SIZE) // 2  # place image center on border
+    radius = (size - SYMBOL_SIZE) // 2
 
-    symbol_positions = []
-    adjusted_symbol_size = SYMBOL_SIZE
+    placed_boxes = []
+    max_attempts = 100
 
-    # Try to avoid overlap by dynamically adjusting size
-    max_attempts = 5
-    for attempt in range(max_attempts):
-        symbol_positions.clear()
-        collision = False
+    for sym_id in symbols:
+        placed = False
+        symbol_size = SYMBOL_SIZE
 
-        for i, sym_id in enumerate(symbols):
-            angle = 2 * math.pi * i / len(symbols)
-            cx = center[0] + radius * math.cos(angle)
-            cy = center[1] + radius * math.sin(angle)
-            bbox = (cx - adjusted_symbol_size / 2, cy - adjusted_symbol_size / 2,
-                    cx + adjusted_symbol_size / 2, cy + adjusted_symbol_size / 2)
+        for attempt in range(max_attempts):
+            angle = random.uniform(0, 2 * math.pi)
+            r = random.uniform(0, radius)
+            cx = center[0] + r * math.cos(angle)
+            cy = center[1] + r * math.sin(angle)
 
-            # Check for collisions
-            for other_bbox in symbol_positions:
-                if not (bbox[2] <= other_bbox[0] or bbox[0] >= other_bbox[2] or
-                        bbox[3] <= other_bbox[1] or bbox[1] >= other_bbox[3]):
-                    collision = True
-                    break
+            x1 = cx - symbol_size / 2
+            y1 = cy - symbol_size / 2
+            x2 = cx + symbol_size / 2
+            y2 = cy + symbol_size / 2
 
-            if collision:
-                break
-            else:
-                symbol_positions.append(bbox)
+            # Check within circle bounds
+            corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
+            if any(math.hypot(c[0]-center[0], c[1]-center[1]) > radius for c in corners):
+                continue
 
-        if collision:
-            adjusted_symbol_size -= 10  # shrink and retry
-        else:
+            # Check overlap
+            if is_overlapping((x1, y1, x2, y2), placed_boxes):
+                continue
+
+            placed_boxes.append((x1, y1, x2, y2))
+            img = images[sym_id].resize((symbol_size, symbol_size))
+            card.paste(img, (int(x1), int(y1)), img.convert('RGBA'))
+            placed = True
             break
 
-    for i, sym_id in enumerate(symbols):
-        angle = 2 * math.pi * i / len(symbols)
-        cx = center[0] + radius * math.cos(angle)
-        cy = center[1] + radius * math.sin(angle)
-        x = cx - adjusted_symbol_size / 2
-        y = cy - adjusted_symbol_size / 2
-        img = images[sym_id].resize((adjusted_symbol_size, adjusted_symbol_size))
-        card.paste(img, (int(x), int(y)), img.convert('RGBA'))
+        # If can't place without overlap, try reducing size and retry
+        if not placed:
+            for smaller_size in range(SYMBOL_SIZE - 10, 20, -10):
+                symbol_size = smaller_size
+                for attempt in range(max_attempts):
+                    angle = random.uniform(0, 2 * math.pi)
+                    r = random.uniform(0, radius)
+                    cx = center[0] + r * math.cos(angle)
+                    cy = center[1] + r * math.sin(angle)
+
+                    x1 = cx - symbol_size / 2
+                    y1 = cy - symbol_size / 2
+                    x2 = cx + symbol_size / 2
+                    y2 = cy + symbol_size / 2
+
+                    corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
+                    if any(math.hypot(c[0]-center[0], c[1]-center[1]) > radius for c in corners):
+                        continue
+
+                    if is_overlapping((x1, y1, x2, y2), placed_boxes):
+                        continue
+
+                    placed_boxes.append((x1, y1, x2, y2))
+                    img = images[sym_id].resize((symbol_size, symbol_size))
+                    card.paste(img, (int(x1), int(y1)), img.convert('RGBA'))
+                    placed = True
+                    break
+                if placed:
+                    break
 
     if border > 0:
         draw.ellipse([MARGIN, MARGIN, size - MARGIN, size - MARGIN], outline="black", width=border)
