@@ -42,13 +42,45 @@ def draw_card(symbols, images, size=CARD_SIZE, border=3):
     card = Image.new("RGBA", (size, size), (255, 255, 255, 255))
     draw = ImageDraw.Draw(card)
     center = (size // 2, size // 2)
-    radius = (size - SYMBOL_SIZE) // 2 - MARGIN
+    radius = (size - SYMBOL_SIZE) // 2
+
+    symbol_positions = []
+    adjusted_symbol_size = SYMBOL_SIZE
+
+    # Try to avoid overlap by dynamically adjusting radius if needed
+    max_attempts = 5
+    for attempt in range(max_attempts):
+        symbol_positions.clear()
+        collision = False
+
+        for i, sym_id in enumerate(symbols):
+            angle = 2 * math.pi * i / len(symbols)
+            x = center[0] + radius * math.cos(angle) - adjusted_symbol_size // 2
+            y = center[1] + radius * math.sin(angle) - adjusted_symbol_size // 2
+            bbox = (x, y, x + adjusted_symbol_size, y + adjusted_symbol_size)
+
+            # Check for collisions
+            for other_bbox in symbol_positions:
+                if not (bbox[2] <= other_bbox[0] or bbox[0] >= other_bbox[2] or bbox[3] <= other_bbox[1] or bbox[1] >= other_bbox[3]):
+                    collision = True
+                    break
+
+            if collision:
+                break
+            else:
+                symbol_positions.append(bbox)
+
+        if collision:
+            adjusted_symbol_size -= 10  # Reduce size to try again
+            radius = (size - adjusted_symbol_size) // 2
+        else:
+            break
 
     for i, sym_id in enumerate(symbols):
         angle = 2 * math.pi * i / len(symbols)
-        x = center[0] + radius * math.cos(angle) - SYMBOL_SIZE // 2
-        y = center[1] + radius * math.sin(angle) - SYMBOL_SIZE // 2
-        img = images[sym_id].resize((SYMBOL_SIZE, SYMBOL_SIZE))
+        x = center[0] + radius * math.cos(angle) - adjusted_symbol_size // 2
+        y = center[1] + radius * math.sin(angle) - adjusted_symbol_size // 2
+        img = images[sym_id].resize((adjusted_symbol_size, adjusted_symbol_size))
         card.paste(img, (int(x), int(y)), img.convert('RGBA'))
 
     if border > 0:
@@ -80,7 +112,7 @@ if st.button("Generate Cards"):
                     card_img.save(buf, format='PNG')
                     img_bytes = buf.getvalue()
                     zipf.writestr(f"card_{idx+1}.png", img_bytes)
-                    st.image(card_img, caption=f"Card {idx+1}", use_column_width=True)
+                    st.image(card_img, caption=f"Card {idx+1}", use_container_width=True)
 
             with open(zip_path, "rb") as f:
                 st.download_button("📦 Download All Cards (ZIP)", f, file_name="spot_it_cards.zip")
