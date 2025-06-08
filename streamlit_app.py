@@ -14,12 +14,12 @@ MARGIN = 20
 st.set_page_config(page_title="Spot It! Card Generator")
 st.title("Spot It! Card Generator")
 
+mode = st.radio("Choose mode:", ["Easy", "Advanced"])
+
 # --- User inputs ---
 n = st.slider("Symbols per card (n):", min_value=3, max_value=8, value=4)
-mode = st.radio("Mode:", ["Easy (Auto placement)", "Advanced (Interactive drag & resize)"])
 image_files = st.file_uploader("Upload at least {} images".format(n**2 - n + 1), type=['png', 'jpg', 'jpeg'], accept_multiple_files=True)
 border_thickness = st.slider("Border thickness (px)", min_value=0, max_value=20, value=3)
-card_size = st.slider("Card size (px)", min_value=300, max_value=1000, value=CARD_SIZE, step=50)
 
 # --- Math logic ---
 def generate_spot_it_deck(n):
@@ -73,12 +73,10 @@ def draw_card(symbols, images, size=CARD_SIZE, border=3):
             x2 = cx + symbol_size / 2
             y2 = cy + symbol_size / 2
 
-            # Check within circle bounds
             corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
             if any(math.hypot(c[0]-center[0], c[1]-center[1]) > radius for c in corners):
                 continue
 
-            # Check overlap
             if is_overlapping((x1, y1, x2, y2), placed_boxes):
                 continue
 
@@ -88,7 +86,6 @@ def draw_card(symbols, images, size=CARD_SIZE, border=3):
             placed = True
             break
 
-        # If can't place without overlap, try reducing size and retry
         if not placed:
             for smaller_size in range(SYMBOL_SIZE - 10, 20, -10):
                 symbol_size = smaller_size
@@ -137,16 +134,13 @@ if st.button("Generate Cards"):
             img = Image.open(f).convert("RGBA")
             images.append(img)
 
-        # Create temp ZIP
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            zip_path = f"{tmpdirname}/spot_it_cards.zip"
-            with zipfile.ZipFile(zip_path, 'w') as zipf:
-                for i, card_symbols in enumerate(deck):
-                    card_img = draw_card(card_symbols, images, size=card_size, border=border_thickness)
-                    buf = io.BytesIO()
-                    card_img.save(buf, format="PNG")
-                    zipf.writestr(f"card_{i + 1}.png", buf.getvalue())
+        if mode == "Easy":
+            for idx, symbols in enumerate(deck):
+                card_img = draw_card(symbols, images, size=CARD_SIZE, border=border_thickness)
+                st.image(card_img, caption=f"Card {idx + 1}", use_container_width=False)
 
-            with open(zip_path, "rb") as f:
-                st.download_button("Download ZIP of Cards", f, file_name="spot_it_cards.zip")
-
+        elif mode == "Advanced":
+            st.info("Advanced mode will support interactive symbol placement in the future.")
+            for idx, symbols in enumerate(deck):
+                card_img = draw_card(symbols, images, size=CARD_SIZE, border=border_thickness)
+                st.image(card_img, caption=f"Card {idx + 1} (Advanced)", use_container_width=False)
