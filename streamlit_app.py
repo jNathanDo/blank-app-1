@@ -10,6 +10,56 @@ import tempfile
 SYMBOL_SIZE_DEFAULT = 80
 MARGIN = 20
 
+def advanced_mode(image_files, n, card_size):
+    total_symbols = n**2 - n + 1
+    if len(image_files) < total_symbols:
+        st.error(f"Please upload at least {total_symbols} images.")
+        return
+
+    deck = generate_spot_it_deck(n)
+    st.success(f"Generated {len(deck)} cards.")
+
+    images = [Image.open(f).convert("RGBA") for f in image_files[:total_symbols]]
+    final_cards = []
+
+    for card_idx, card_symbols in enumerate(deck):
+        st.markdown(f"### Card {card_idx + 1}")
+        center = card_size // 2
+        radius = (card_size - MARGIN*2) // 2
+
+        default_positions = []
+        for i in range(len(card_symbols)):
+            angle = 2 * math.pi * i / len(card_symbols)
+            x = center + radius * math.cos(angle)
+            y = center + radius * math.sin(angle)
+            default_positions.append([x, y])
+
+        positions = []
+        sizes = []
+        for i, sym_id in enumerate(card_symbols):
+            st.write(f"Symbol {sym_id + 1}")
+            pos_x = st.slider(f"X pos (symbol {sym_id + 1}, card {card_idx + 1})",
+                              MARGIN, card_size - MARGIN, int(default_positions[i][0]),
+                              key=f"x_{card_idx}_{i}")
+            pos_y = st.slider(f"Y pos (symbol {sym_id + 1}, card {card_idx + 1})",
+                              MARGIN, card_size - MARGIN, int(default_positions[i][1]),
+                              key=f"y_{card_idx}_{i}")
+            size_slider = st.slider(f"Size (symbol {sym_id + 1}, card {card_idx + 1})",
+                                    20, 120, SYMBOL_SIZE_DEFAULT,
+                                    key=f"s_{card_idx}_{i}")
+            positions.append([pos_x, pos_y])
+            sizes.append(size_slider)
+
+        card_img = draw_card_with_positions(card_symbols, images, positions, sizes, card_size)
+        st.image(card_img, use_column_width=True)
+        final_cards.append(card_img)
+
+    return final_cards
+
+
+
+
+
 st.set_page_config(page_title="Spot It! Card Generator")
 st.title("Spot It! Card Generator")
 
@@ -136,56 +186,22 @@ def draw_card_with_positions(symbols, images, positions, sizes, size):
 
 # --- Main logic ---
 if st.button("Generate Cards"):
-    total_needed = n**2 - n + 1
-    if len(image_files) < total_needed:
-        st.error(f"You need to upload at least {total_needed} images.")
+    if image_files is None or len(image_files) < (n**2 - n + 1):
+        st.error(f"You must upload at least {n**2 - n + 1} images to proceed.")
     else:
+        images = [Image.open(f).convert("RGBA") for f in image_files[:n**2 - n + 1]]
         deck = generate_spot_it_deck(n)
-        st.success(f"Generated {len(deck)} cards.")
 
-        images = [Image.open(f).convert("RGBA") for f in image_files[:total_needed]]
-        final_cards = []
+        if mode == "Easy":
+            cards = []
+            for symbols in deck:
+                card = draw_card(symbols, images, card_size, border_thickness)
+                st.image(card, use_column_width=True)
+                cards.append(card)
+        else:
+            advanced_mode(image_files, n, card_size)
 
-        for card_idx, card_symbols in enumerate(deck):
-            if mode == "Easy":
-                card_img = draw_card(card_symbols, images, card_size, border_thickness)
-                st.image(card_img, caption=f"Card {card_idx + 1}", use_container_width=True)
-                final_cards.append(card_img)
-            else:
-                # --- Advanced Mode ---
-                final_cards = []
-                for card_idx, card_symbols in enumerate(deck):
-                    st.subheader(f"Advanced Card {card_idx + 1}")
-                    default_positions = [[card_size // 2, card_size // 2] for _ in range(len(card_symbols))]
 
-        # Setup session state keys
-                for i, sym_id in enumerate(card_symbols):
-                    key_prefix = f"card{card_idx}_sym{i}"
-                    if f"{key_prefix}_x" not in st.session_state:
-                        st.session_state[f"{key_prefix}_x"] = default_positions[i][0]
-                    if f"{key_prefix}_y" not in st.session_state:
-                        st.session_state[f"{key_prefix}_y"] = default_positions[i][1]
-                    if f"{key_prefix}_s" not in st.session_state:
-                        st.session_state[f"{key_prefix}_s"] = SYMBOL_SIZE_DEFAULT
-        # Sliders
-                positions = []
-                sizes = []
-                for i, sym_id in enumerate(card_symbols):
-                    key_prefix = f"card{card_idx}_sym{i}"
-                    st.write(f"Symbol {sym_id + 1}")
-                    pos_x = st.slider(f"X position (symbol {sym_id + 1})", 
-                              0, card_size, st.session_state[f"{key_prefix}_x"], key=f"{key_prefix}_x")
-                    pos_y = st.slider(f"Y position (symbol {sym_id + 1})", 
-                              0, card_size, st.session_state[f"{key_prefix}_y"], key=f"{key_prefix}_y")
-                    size_slider = st.slider(f"Size (symbol {sym_id + 1})", 
-                                    20, 150, st.session_state[f"{key_prefix}_s"], key=f"{key_prefix}_s")
-                    positions.append([pos_x, pos_y])
-                    sizes.append(size_slider)
-
-        # Draw and show the card
-                card_img = draw_card_with_positions(card_symbols, images, positions, sizes, card_size, border_thickness)
-                st.image(card_img, use_container_width=True)
-                final_cards.append(card_img)
 
     # ZIP download
     if st.button("Export All Cards as ZIP"):
