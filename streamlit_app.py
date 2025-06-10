@@ -34,23 +34,22 @@ def advanced_mode(image_files, n, card_size):
             y = center + radius * math.sin(angle)
             default_positions.append([x, y])
 
+        # Sliders for positions and sizes per symbol
         positions = []
         sizes = []
+
         for i, sym_id in enumerate(card_symbols):
             st.write(f"Symbol {sym_id + 1}")
-            pos_x = st.slider(f"X pos (symbol {sym_id + 1}, card {card_idx + 1})",
-                              MARGIN, card_size - MARGIN, int(default_positions[i][0]),
-                              key=f"x_{card_idx}_{i}")
-            pos_y = st.slider(f"Y pos (symbol {sym_id + 1}, card {card_idx + 1})",
-                              MARGIN, card_size - MARGIN, int(default_positions[i][1]),
-                              key=f"y_{card_idx}_{i}")
-            size_slider = st.slider(f"Size (symbol {sym_id + 1}, card {card_idx + 1})",
-                                    20, 120, SYMBOL_SIZE_DEFAULT,
-                                    key=f"s_{card_idx}_{i}")
+            pos_x = st.slider(f"X position (symbol {sym_id + 1}, card {card_idx + 1})", 
+                              MARGIN, CARD_SIZE - MARGIN, int(default_positions[i][0]), key=f"x_{card_idx}_{i}")
+            pos_y = st.slider(f"Y position (symbol {sym_id + 1}, card {card_idx + 1})", 
+                              MARGIN, CARD_SIZE - MARGIN, int(default_positions[i][1]), key=f"y_{card_idx}_{i}")
+            size_slider = st.slider(f"Size (symbol {sym_id + 1}, card {card_idx + 1})", 
+                                    20, 120, SYMBOL_SIZE_DEFAULT, key=f"s_{card_idx}_{i}")
             positions.append([pos_x, pos_y])
             sizes.append(size_slider)
 
-        card_img = draw_card_with_positions(card_symbols, images, positions, sizes, card_size)
+        card_img = draw_card_with_positions(card_symbols, images, positions, sizes)
         st.image(card_img, use_container_width=True)
         final_cards.append(card_img)
 
