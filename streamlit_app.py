@@ -20,7 +20,10 @@ def advanced_mode(image_files, n, card_size):
     st.success(f"Generated {len(deck)} cards.")
 
     images = [Image.open(f).convert("RGBA") for f in image_files[:total_symbols]]
-    final_cards = []
+    if 'final_cards' not in st.session_state:
+        st.session_state.final_cards = []
+    else:
+        st.session_state.final_cards.clear()
 
     for card_idx, card_symbols in enumerate(deck):
         st.markdown(f"### Card {card_idx + 1}")
@@ -54,7 +57,7 @@ def advanced_mode(image_files, n, card_size):
         st.image(card_img, use_container_width=True)
         final_cards.append(card_img)
 
-    return final_cards
+    return st.session_state.final_cards
 
 
 
@@ -199,18 +202,21 @@ if st.button("Generate Cards"):
                 st.image(card, use_column_width=True)
                 cards.append(card)
         else:
-            advanced_mode(image_files, n, card_size)
+            st.session_state.final_cards = advanced_mode(image_files, n, card_size)
 
 
 
-    # ZIP download
     if st.button("Export All Cards as ZIP"):
+    if 'final_cards' not in st.session_state or not st.session_state.final_cards:
+        st.error("Please generate cards before exporting.")
+    else:
         with tempfile.TemporaryDirectory() as tmpdir:
             zip_path = f"{tmpdir}/spot_it_cards.zip"
             with zipfile.ZipFile(zip_path, "w") as zipf:
-                for i, card_img in enumerate(final_cards):
+                for i, card_img in enumerate(st.session_state.final_cards):
                     buf = io.BytesIO()
                     card_img.save(buf, format="PNG")
                     zipf.writestr(f"card_{i+1}.png", buf.getvalue())
             with open(zip_path, "rb") as f:
                 st.download_button("Download ZIP", f, file_name="spot_it_cards.zip")
+
