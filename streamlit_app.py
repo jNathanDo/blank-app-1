@@ -38,21 +38,91 @@ def generate_spot_it_deck(n):
             cards.append(card)
     return cards
 
-def draw_card_circle_layout(symbols, images, size=500, border=3):
+
+
+# --- Collision detection ---
+def is_overlapping(new_box, placed_boxes):
+    for box in placed_boxes:
+        if not (new_box[2] <= box[0] or new_box[0] >= box[2] or
+                new_box[3] <= box[1] or new_box[1] >= box[3]):
+            return True
+    return False
+
+
+# --- Improved Drawing Logic with Collision ---
+def draw_card(symbols, images, size, border):
     card = Image.new("RGBA", (size, size), (255, 255, 255, 255))
     draw = ImageDraw.Draw(card)
     center = (size // 2, size // 2)
-    radius = (size - MARGIN*2) // 2
-    draw.ellipse([MARGIN, MARGIN, size - MARGIN, size - MARGIN], outline="black", width=border)
-    for i, sym_id in enumerate(symbols):
-        img = images[sym_id].resize((SYMBOL_SIZE_DEFAULT, SYMBOL_SIZE_DEFAULT))
-        angle = 2 * math.pi * i / len(symbols)
-        x = center[0] + radius * math.cos(angle)
-        y = center[1] + radius * math.sin(angle)
-        x = int(x - SYMBOL_SIZE_DEFAULT // 2)
-        y = int(y - SYMBOL_SIZE_DEFAULT // 2)
-        card.paste(img, (x, y), img.convert("RGBA"))
+    radius = (size - SYMBOL_SIZE_DEFAULT) // 2
+
+    placed_boxes = []
+    max_attempts = 100
+
+    for sym_id in symbols:
+        placed = False
+        symbol_size = SYMBOL_SIZE_DEFAULT
+
+        for attempt in range(max_attempts):
+            angle = random.uniform(0, 2 * math.pi)
+            r = random.uniform(0, radius)
+            cx = center[0] + r * math.cos(angle)
+            cy = center[1] + r * math.sin(angle)
+
+            x1 = cx - symbol_size / 2
+            y1 = cy - symbol_size / 2
+            x2 = cx + symbol_size / 2
+            y2 = cy + symbol_size / 2
+
+            corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
+            if any(math.hypot(c[0]-center[0], c[1]-center[1]) > radius for c in corners):
+                continue
+
+            if is_overlapping((x1, y1, x2, y2), placed_boxes):
+                continue
+
+            placed_boxes.append((x1, y1, x2, y2))
+            img = images[sym_id].resize((symbol_size, symbol_size))
+            card.paste(img, (int(x1), int(y1)), img.convert('RGBA'))
+            placed = True
+            break
+
+        if not placed:
+            for smaller_size in range(SYMBOL_SIZE_DEFAULT - 10, 20, -10):
+                symbol_size = smaller_size
+                for attempt in range(max_attempts):
+                    angle = random.uniform(0, 2 * math.pi)
+                    r = random.uniform(0, radius)
+                    cx = center[0] + r * math.cos(angle)
+                    cy = center[1] + r * math.sin(angle)
+
+                    x1 = cx - symbol_size / 2
+                    y1 = cy - symbol_size / 2
+                    x2 = cx + symbol_size / 2
+                    y2 = cy + symbol_size / 2
+
+                    corners = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
+                    if any(math.hypot(c[0]-center[0], c[1]-center[1]) > radius for c in corners):
+                        continue
+
+                    if is_overlapping((x1, y1, x2, y2), placed_boxes):
+                        continue
+
+                    placed_boxes.append((x1, y1, x2, y2))
+                    img = images[sym_id].resize((symbol_size, symbol_size))
+                    card.paste(img, (int(x1), int(y1)), img.convert('RGBA'))
+                    placed = True
+                    break
+                if placed:
+                    break
+
+    if border > 0:
+        draw.ellipse([MARGIN, MARGIN, size - MARGIN, size - MARGIN], outline="black", width=border)
     return card
+
+
+
+
 
 def draw_card_with_positions(symbols, images, positions, sizes, size=500, border=3):
     card = Image.new("RGBA", (size, size), (255, 255, 255, 255))
@@ -78,7 +148,7 @@ if image_files and len(image_files) >= total_symbols:
     for card_idx, card_symbols in enumerate(deck):
         st.markdown(f"### Card {card_idx + 1}")
         if mode == "Easy":
-            card_img = draw_card_circle_layout(card_symbols, images, size=card_size, border=border_thickness)
+            card_img = draw_card(card_symbols, images, size=card_size, border=border_thickness)
             st.image(card_img, use_container_width=True)
             final_cards.append(card_img)
         else:
