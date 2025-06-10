@@ -51,7 +51,7 @@ def advanced_mode(image_files, n, card_size):
             sizes.append(size_slider)
 
         card_img = draw_card_with_positions(card_symbols, images, positions, sizes, card_size)
-        st.image(card_img, use_column_width=True)
+        st.image(card_img, use_container_width=True)
         final_cards.append(card_img)
 
     return final_cards
