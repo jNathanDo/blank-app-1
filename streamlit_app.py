@@ -20,10 +20,7 @@ def advanced_mode(image_files, n, card_size):
     st.success(f"Generated {len(deck)} cards.")
 
     images = [Image.open(f).convert("RGBA") for f in image_files[:total_symbols]]
-    if 'final_cards' not in st.session_state:
-        st.session_state.final_cards = []
-    else:
-        st.session_state.final_cards.clear()
+    final_cards = []
 
     for card_idx, card_symbols in enumerate(deck):
         st.markdown(f"### Card {card_idx + 1}")
@@ -57,7 +54,9 @@ def advanced_mode(image_files, n, card_size):
         st.image(card_img, use_container_width=True)
         final_cards.append(card_img)
 
-    return st.session_state.final_cards
+    # Store in session_state for export
+    st.session_state["final_cards"] = final_cards
+
 
 
 
